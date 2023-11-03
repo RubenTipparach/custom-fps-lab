@@ -1,8 +1,11 @@
+using UnityEditor.ShaderGraph;
 using UnityEngine;
 
 public class CustomFPSController : MonoBehaviour
 {
+    // Public variables for tuning the controller
     public float speed = 5.0f;
+    public float airControl = 0.5f;  // Reduced control when in the air
     public float sensitivity = 2.0f;
     public float gravity = -9.81f;
     public float jumpForce = 5.0f;
@@ -11,14 +14,18 @@ public class CustomFPSController : MonoBehaviour
     public float slopeLimit = 45.0f;
     public Transform groundCheck; // Assign the child GameObject in the inspector
     public LayerMask groundMask; // Assign a ground layer mask in the inspector
+    public Camera playerCamera;
+    public float groundCheckOffset = 0.1f; // Offset for the ground check ray
 
+    // Private variables for internal state
     private Rigidbody rb;
     private CapsuleCollider col;
     private bool isGrounded;
     private Vector3 colliderCenterOriginal;
     private float groundDistance = 0.4f; // Distance to check for ground
     private float cameraVerticalAngle = 0.0f;
-    public Camera playerCamera;
+    private Vector3 horizontalVelocity; // Separate horizontal velocity
+
 
     void Start()
     {
@@ -27,14 +34,18 @@ public class CustomFPSController : MonoBehaviour
         Cursor.lockState = CursorLockMode.Locked; // Lock the cursor to the center of the screen
         colliderCenterOriginal = col.center;
     }
-
     void Update()
     {
         MouseLook();
-        Move();
         Jump();
         Crouch();
         GroundCheck();
+    }
+
+    void FixedUpdate()
+    {
+        Move();
+        ApplyGravity();
     }
 
     void MouseLook()
@@ -51,32 +62,32 @@ public class CustomFPSController : MonoBehaviour
         playerCamera.transform.localEulerAngles = new Vector3(cameraVerticalAngle, 0, 0);
     }
 
-    void GroundCheck()
-    {
-        // Ground check ray starting from the groundCheck child transform
-        isGrounded = Physics.Raycast(groundCheck.position, -Vector3.up, groundDistance, groundMask);
-    }
-
 
     void Move()
     {
-        // Movement
-        float x = Input.GetAxis("Horizontal") * speed;
-        float z = Input.GetAxis("Vertical") * speed;
+        // Get horizontal movement input
+        float x = Input.GetAxis("Horizontal") * (isGrounded ? speed : airControl);
+        float z = Input.GetAxis("Vertical") * (isGrounded ? speed : airControl);
+
+        // Convert local movement direction to world space
         Vector3 move = transform.right * x + transform.forward * z;
+        horizontalVelocity = new Vector3(move.x, 0f, move.z);
 
-        // Slope handling
-        if (isGrounded && Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, col.height / 2 * slopeLimit))
+        // Apply the horizontal velocity
+        if (isGrounded)
         {
-            float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
-            if (slopeAngle <= slopeLimit)
-            {
-                Vector3 slopeDir = Vector3.Cross(Vector3.up, hit.normal);
-                move = Vector3.Cross(slopeDir, hit.normal).normalized * move.magnitude;
-            }
+            rb.velocity = new Vector3(horizontalVelocity.x, rb.velocity.y, horizontalVelocity.z);
         }
-
-        rb.MovePosition(transform.position + new Vector3(move.x, rb.velocity.y, move.z));
+        else
+        {
+            // Allow for some air control
+            rb.velocity += horizontalVelocity * Time.fixedDeltaTime;
+            rb.velocity = new Vector3(
+                Mathf.Clamp(rb.velocity.x, -speed, speed),
+                rb.velocity.y,
+                Mathf.Clamp(rb.velocity.z, -speed, speed)
+            );
+        }
     }
 
     void Jump()
@@ -103,16 +114,24 @@ public class CustomFPSController : MonoBehaviour
         }
     }
 
-    // Call this to apply gravity and handle grounded state
-    // Call this to apply gravity and handle grounded state
-    void FixedUpdate()
+
+    void GroundCheck()
     {
-        ApplyGravity();
+        // Adjust the ray origin based on the offset and check for ground
+        Vector3 rayOrigin = groundCheck.position + Vector3.up * groundCheckOffset;
+        isGrounded = Physics.Raycast(rayOrigin, -Vector3.up, out RaycastHit hit, groundDistance + groundCheckOffset, groundMask);
+
+        if (isGrounded) { Debug.Log("shit is grounded."); }
+
+        if (isGrounded && rb.velocity.y < 0)
+        {
+            rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+        }
     }
 
     void ApplyGravity()
     {
-        // Apply custom gravity
+        // Apply custom gravity only if the player is not grounded
         if (!isGrounded)
         {
             rb.AddForce(Vector3.up * gravity * rb.mass);
