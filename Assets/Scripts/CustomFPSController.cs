@@ -121,7 +121,7 @@ public class CustomFPSController : MonoBehaviour
         Vector3 rayOrigin = groundCheck.position + Vector3.up * groundCheckOffset;
         isGrounded = Physics.Raycast(rayOrigin, -Vector3.up, out RaycastHit hit, groundDistance + groundCheckOffset, groundMask);
 
-        if (isGrounded) { Debug.Log("shit is grounded."); }
+        //if (isGrounded) { Debug.Log("shit is grounded."); }
 
         if (isGrounded && rb.velocity.y < 0)
         {
